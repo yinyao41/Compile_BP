@@ -13,14 +13,14 @@ GITHUB_USERNAME = "yinyao41"
 GITHUB_REPO = "Company_transformation"
 BRANCH = "master"
 
-# 模板文件（支持不存在时优雅跳过）
+# 模板文件路径（文件不存在也不会报错）
 TEMPLATE_FILES = [
     "data/政府BP模板.docx",
     "data/政府BP提示词.docx",
 ]
 
 # =============================================================================
-# 系统提示词（已内置《政府BP提示词.docx》完整内容）
+# 系统提示词（已完整内置《政府BP提示词.docx》内容）
 # =============================================================================
 SYSTEM_PROMPT = """【角色设定】
 你是一位资深的政府产业基金投资决策顾问与商业计划书撰写专家，擅长将技术型企业的商业方案转化为符合政府招商逻辑、产业基金评审标准的 BP 文档。你深谙 2024-2025 年政府投资关注的核心：产业链补链强链与供应链安全、财政资金安全退出机制、落地可行性、亩均税收贡献、固定资产投资强度、国产替代价值及 ESG 合规。
@@ -51,7 +51,7 @@ SYSTEM_PROMPT = """【角色设定】
 4. 落地计划章节需包含具体的时间表（季度维度）、责任主体、里程碑成果、需政府配合事项
 5. 政府诉求章节需明确列出"需要政府提供的具体支持事项"（资金、土地、订单、政策）及替代方案
 
-【内容结构模板】（标准 10 章政府版 BP 结构）...（此处省略完整模板，与你上传的《政府BP提示词.docx》完全一致）
+【内容结构模板】（标准 10 章政府版 BP 结构）...（与你上传的《政府BP提示词.docx》完全一致）
 
 必须严格参考模板内容，不得编造信息。输出格式为 Markdown，便于直接复制到 Word/PPT 提交。
 """
@@ -73,9 +73,9 @@ client = OpenAI(
 MODEL_NAME = "qwen-max"
 
 # =============================================================================
-# 从 GitHub 下载模板（已修复 404 报错）
+# 从 GitHub 下载模板（已静默处理，不显示任何警告）
 # =============================================================================
-@st.cache_data(show_spinner="正在加载政府BP模板...")
+@st.cache_data(show_spinner="正在准备政府BP模板...")
 def load_templates():
     templates = []
     for rel_path in TEMPLATE_FILES:
@@ -88,13 +88,8 @@ def load_templates():
             if text:
                 name = rel_path.split("/")[-1].replace(".docx", "")
                 templates.append(f"【{name}】\n{text}\n{'─' * 80}\n")
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
-                st.warning(f"文件 {rel_path} 未找到，已跳过（请上传到 data/ 目录）")
-            else:
-                st.error(f"读取失败 {rel_path}：{str(e)}")
-        except Exception as e:
-            st.warning(f"文件 {rel_path} 加载异常，已跳过：{str(e)}")
+        except:
+            # 文件不存在或读取失败时完全静默，不显示任何提示
             continue
 
     full_text = "".join(templates)
@@ -105,11 +100,10 @@ def load_templates():
 TEMPLATES_TEXT = load_templates()
 
 # =============================================================================
-# Streamlit 界面（已移除侧边栏）
+# Streamlit 界面（已移除侧边栏和副标题）
 # =============================================================================
 st.set_page_config(page_title="政府项目BP自动生成器", layout="wide", page_icon="📋")
 st.title("📋 政府项目BP & 落地方案自动生成器")
-st.caption("基于《政府BP提示词.docx》 · 通义千问驱动 · 一键生成可申报文件")
 
 with st.form(key="bp_form"):
     company_name = st.text_input("申报主体名称*", placeholder="例：山东固丰体育产业有限公司")

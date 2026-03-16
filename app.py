@@ -20,22 +20,18 @@ TEMPLATE_FILES = [
 ]
 
 # =============================================================================
-# 极简、高速系统提示词（强制要求完整模板结构）
+# 极简系统提示词（输出纯文本）
 # =============================================================================
 SYSTEM_PROMPT = """你是一位政府项目BP撰写专家。
-请严格按照「政府BP提示词.docx」中的10章标准结构、标题层级、语言风格和所有要求，
-为用户项目生成一份**完整、不缺失任何章节**的商业计划书（BP）及落地方案。
-必须包含：
-- 一页纸决策单（首页）
-- 完整10章BP（零、一、（一）、1.（1）层级）
-- 详细落地方案（时间表、资金计划、政策诉求、风险对冲）
-
-使用用户提供的真实信息，不得编造或省略章节。
-输出格式为 Markdown。
-现在立即开始生成。"""
+请严格按照「政府BP提示词.docx」中的10章结构和政府语言风格，
+为用户项目生成一份完整、可直接提交的BP及落地方案。
+输出必须是纯文本（不要使用任何Markdown符号，如#、**、-、|等），结构清晰，使用换行和分隔线。
+包含一页纸决策单 + 完整10章BP + 详细落地方案。
+使用用户提供的真实信息，不得编造。
+现在立即开始生成纯文本报告。"""
 
 # =============================================================================
-# 客户端（使用最快模型）
+# 客户端（最快模型）
 # =============================================================================
 DASHSCOPE_API_KEY = st.secrets.get("DASHSCOPE_API_KEY", os.getenv("DASHSCOPE_API_KEY"))
 if not DASHSCOPE_API_KEY:
@@ -47,10 +43,10 @@ client = OpenAI(
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 
-MODEL_NAME = "qwen-turbo"  # 最快模型
+MODEL_NAME = "qwen-turbo"
 
 # =============================================================================
-# 加载模板（强力截断到8000字符，保证60秒内完成）
+# 加载模板（截断到10000字符）
 # =============================================================================
 @st.cache_data(show_spinner="正在加载模板...")
 def load_templates():
@@ -64,21 +60,21 @@ def load_templates():
             text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
             if text:
                 name = rel_path.split("/")[-1].replace(".docx", "")
-                templates.append(f"【{name}】\n{text[:4000]}\n")  # 每个文件限4000字符
+                templates.append(f"[{name}]\n{text[:5000]}\n" + "-"*60 + "\n")
         except:
             continue
     full_text = "".join(templates)
-    if len(full_text) > 8000:
-        full_text = full_text[:8000] + "\n\n【模板内容已截断以确保60秒内生成完整报告】"
+    if len(full_text) > 10000:
+        full_text = full_text[:10000] + "\n\n[模板内容已截断以确保60秒内生成]"
     return full_text
 
 TEMPLATES_TEXT = load_templates()
 
 # =============================================================================
-# 界面
+# Streamlit 界面
 # =============================================================================
 st.set_page_config(page_title="政府项目BP生成器", layout="wide")
-st.title("📋 政府项目BP & 落地方案生成器（限时60秒）")
+st.title("政府项目BP & 落地方案生成器（限时60秒）")
 
 with st.form(key="bp_form"):
     company_name = st.text_input("申报主体名称*", placeholder="例：山东固丰体育产业有限公司")
@@ -89,7 +85,7 @@ with st.form(key="bp_form"):
     current_status = st.text_area("项目基本情况与核心亮点*", height=140)
     additional_file = st.file_uploader("上传补充材料（可选）", type=["docx", "pdf", "txt"])
 
-    submit_button = st.form_submit_button("🚀 生成BP & 落地方案（60秒内完成）")
+    submit_button = st.form_submit_button("生成BP & 落地方案（60秒内完成）")
 
 if submit_button:
     if not company_name or not project_name or not target_region or not current_status:
@@ -100,9 +96,9 @@ if submit_button:
             try:
                 if additional_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
                     doc = Document(BytesIO(additional_file.read()))
-                    extra_text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())[:2000]
+                    extra_text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())[:1500]
                 else:
-                    extra_text = additional_file.read().decode("utf-8")[:2000]
+                    extra_text = additional_file.read().decode("utf-8")[:1500]
             except:
                 st.warning("文件解析失败，仅使用文字描述")
 
@@ -123,10 +119,10 @@ if submit_button:
                     model=MODEL_NAME,
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT + "\n\n模板内容摘要：\n" + TEMPLATES_TEXT},
-                        {"role": "user", "content": f"请严格按照模板格式，为以下项目生成**完整、不缺失章节**的BP及落地方案：\n{user_context}"}
+                        {"role": "user", "content": f"请严格按照模板格式，为以下项目生成完整BP及落地方案（纯文本）：\n{user_context}"}
                     ],
                     temperature=0.3,
-                    max_tokens=1500,          # 控制输出长度，加速生成
+                    max_tokens=1500,
                     stream=False
                 )
                 result = response.choices[0].message.content
@@ -134,14 +130,14 @@ if submit_button:
                 elapsed = time.time() - start_time
                 if elapsed > 58:
                     st.warning("生成接近超时，但已尽力输出完整报告")
-                st.success(f"✅ 生成完成！（耗时 {elapsed:.1f} 秒）")
-                st.markdown(result)
+                st.success(f"生成完成！（耗时 {elapsed:.1f} 秒）")
+                st.markdown(result, unsafe_allow_html=False)  # 纯文本显示
 
                 st.download_button(
-                    label="📥 下载完整BP（Markdown）",
+                    label="下载完整报告（纯文本）",
                     data=result,
-                    file_name=f"{project_name}_政府BP_落地方案.md",
-                    mime="text/markdown"
+                    file_name=f"{project_name}_政府BP_落地方案.txt",
+                    mime="text/plain"
                 )
 
             except Exception as e:

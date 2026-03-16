@@ -15,7 +15,7 @@ GITHUB_REPO = "Company_transformation"
 BRANCH = "master"
 
 # 只读取这个文件作为模板
-TEMPLATE_FILE = "data/政府BP提示词.docx"
+TEMPLATE_FILE = "data/government_bp_prompt.docx"  # ← 改成你重命名后的文件名
 
 # =============================================================================
 # 系统提示词（强制按照提示词文件格式输出纯文本）

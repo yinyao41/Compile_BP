@@ -8,26 +8,31 @@ import os
 import time
 
 # =============================================================================
-# 配置区
+# 配置区（只读取政府BP提示词.docx）
 # =============================================================================
 GITHUB_USERNAME = "yinyao41"
 GITHUB_REPO = "Company_transformation"
 BRANCH = "master"
 
-TEMPLATE_FILES = [
-    "data/政府BP模板.docx",
-    "data/政府BP提示词.docx",
-]
+# 只读取这个文件作为模板
+TEMPLATE_FILE = "data/政府BP提示词.docx"
 
 # =============================================================================
-# 极简系统提示词（输出纯文本）
+# 系统提示词（强制按照提示词文件格式输出纯文本）
 # =============================================================================
 SYSTEM_PROMPT = """你是一位政府项目BP撰写专家。
-请严格按照「政府BP提示词.docx」中的10章结构和政府语言风格，
-为用户项目生成一份完整、可直接提交的BP及落地方案。
-输出必须是纯文本（不要使用任何Markdown符号，如#、**、-、|等），结构清晰，使用换行和分隔线。
-包含一页纸决策单 + 完整10章BP + 详细落地方案。
-使用用户提供的真实信息，不得编造。
+请严格按照「政府BP提示词.docx」中的10章标准结构、标题层级（零、一、（一）、1.（1））、语言风格和所有要求，
+为用户项目生成一份完整、可直接提交的商业计划书（BP）及落地方案。
+输出必须是纯文本（不要使用任何Markdown符号，如#、**、-、|等）。
+一级标题前后使用 === 加粗，例如：
+================== 一、项目概述 ==================
+
+必须包含：
+- 一页纸决策单（首页）
+- 完整10章BP
+- 详细落地方案（时间表、资金计划、政策诉求、风险对冲）
+
+使用用户提供的真实信息，不得编造或省略任何章节。
 现在立即开始生成纯文本报告。"""
 
 # =============================================================================
@@ -46,29 +51,27 @@ client = OpenAI(
 MODEL_NAME = "qwen-turbo"
 
 # =============================================================================
-# 加载模板（截断到10000字符）
+# 只加载政府BP提示词.docx（截断到8000字符）
 # =============================================================================
-@st.cache_data(show_spinner="正在加载模板...")
-def load_templates():
-    templates = []
-    for rel_path in TEMPLATE_FILES:
-        raw_url = f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{GITHUB_REPO}/{BRANCH}/{rel_path}"
-        try:
-            r = requests.get(raw_url, timeout=8)
-            r.raise_for_status()
-            doc = Document(BytesIO(r.content))
-            text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
-            if text:
-                name = rel_path.split("/")[-1].replace(".docx", "")
-                templates.append(f"[{name}]\n{text[:5000]}\n" + "-"*60 + "\n")
-        except:
-            continue
-    full_text = "".join(templates)
-    if len(full_text) > 10000:
-        full_text = full_text[:10000] + "\n\n[模板内容已截断以确保60秒内生成]"
-    return full_text
+@st.cache_data(show_spinner="正在加载政府BP提示词模板...")
+def load_template():
+    raw_url = f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{GITHUB_REPO}/{BRANCH}/{TEMPLATE_FILE}"
+    try:
+        r = requests.get(raw_url, timeout=8)
+        r.raise_for_status()
+        doc = Document(BytesIO(r.content))
+        text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
+        if not text:
+            st.error("模板文件内容为空！")
+            st.stop()
+        if len(text) > 8000:
+            text = text[:8000] + "\n[模板内容已截断以确保60秒内生成完整报告]"
+        return text
+    except Exception as e:
+        st.error(f"加载模板失败：{str(e)}")
+        st.stop()
 
-TEMPLATES_TEXT = load_templates()
+TEMPLATE_TEXT = load_template()
 
 # =============================================================================
 # Streamlit 界面
@@ -118,11 +121,11 @@ if submit_button:
                 response = client.chat.completions.create(
                     model=MODEL_NAME,
                     messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT + "\n\n模板内容摘要：\n" + TEMPLATES_TEXT},
-                        {"role": "user", "content": f"请严格按照模板格式，为以下项目生成完整BP及落地方案（纯文本）：\n{user_context}"}
+                        {"role": "system", "content": SYSTEM_PROMPT + "\n\n政府BP提示词模板全文：\n" + TEMPLATE_TEXT},
+                        {"role": "user", "content": f"请严格按照模板格式，为以下项目生成完整BP及落地方案（纯文本，一级标题加粗）：\n{user_context}"}
                     ],
                     temperature=0.3,
-                    max_tokens=1500,
+                    max_tokens=1400,
                     stream=False
                 )
                 result = response.choices[0].message.content
@@ -131,7 +134,7 @@ if submit_button:
                 if elapsed > 58:
                     st.warning("生成接近超时，但已尽力输出完整报告")
                 st.success(f"生成完成！（耗时 {elapsed:.1f} 秒）")
-                st.markdown(result, unsafe_allow_html=False)  # 纯文本显示
+                st.text(result)  # 纯文本显示
 
                 st.download_button(
                     label="下载完整报告（纯文本）",

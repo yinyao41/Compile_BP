@@ -74,7 +74,7 @@ TEMPLATES_TEXT = load_templates()
 # Streamlit 界面
 # =============================================================================
 st.set_page_config(page_title="政府项目BP生成器", layout="wide")
-st.title("政府项目BP & 落地方案生成器（限时60秒）")
+st.title("政府项目BP & 落地方案生成器")
 
 with st.form(key="bp_form"):
     company_name = st.text_input("申报主体名称*", placeholder="例：山东固丰体育产业有限公司")

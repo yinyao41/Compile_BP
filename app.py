@@ -85,7 +85,7 @@ with st.form(key="bp_form"):
     current_status = st.text_area("项目基本情况与核心亮点*", height=140)
     additional_file = st.file_uploader("上传补充材料（可选）", type=["docx", "pdf", "txt"])
 
-    submit_button = st.form_submit_button("生成BP & 落地方案（60秒内完成）")
+    submit_button = st.form_submit_button("生成BP & 落地方案")
 
 if submit_button:
     if not company_name or not project_name or not target_region or not current_status:

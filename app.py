@@ -1,17 +1,42 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 from io import BytesIO
-from docx import Document
 import time
 
+# 引入 OpenAI 客戶端（通義千問相容此介面）
+from openai import OpenAI
+
 # ────────────────────────────────────────────────
-#  常數設定
+#          初始化 通義千問 client
+# ────────────────────────────────────────────────
+# 推薦方式：在 .streamlit/secrets.toml 中設定：
+# [dashscope]
+# api_key = "sk-你的通義千問API Key..."
+
+if "dashscope" not in st.secrets or "api_key" not in st.secrets["dashscope"]:
+    st.error("請在 Streamlit secrets 中設定 dashscope.api_key\n（即通義千問的 DASHSCOPE_API_KEY）")
+    st.stop()
+
+client = OpenAI(
+    api_key = st.secrets["dashscope"]["api_key"],
+    base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+)
+
+# 選擇你有權限使用的模型（常見選項）
+# MODEL_NAME = "qwen-max"          # 旗艦版，效果最好
+# MODEL_NAME = "qwen-plus"         # 平衡型
+MODEL_NAME = "qwen-turbo"          # 速度快、成本低（預設推薦測試用）
+# MODEL_NAME = "qwen-max-latest"   # 最新版（視阿里更新而定）
+
+# ────────────────────────────────────────────────
+#  其他常數
 # ────────────────────────────────────────────────
 MAX_GENERATION_SECONDS = 90
 MAX_TOKENS = 4200
 TEMPERATURE = 0.25
 
 # ────────────────────────────────────────────────
-#  強化版系統提示（最關鍵部分）
+#  強化版系統提示
 # ────────────────────────────────────────────────
 SYSTEM_PROMPT_STRICT = """你是一位非常专业的政府项目申报BP撰写专家，专精产业招商、落地政策分析、政府汇报材料。
 
@@ -27,11 +52,11 @@ SYSTEM_PROMPT_STRICT = """你是一位非常专业的政府项目申报BP撰写�
 5. 经济效益分析
 6. 社会效益与生态影响
 7. 落地方案与政策需求
-   - 6.1 首选落地区域及理由
-   - 6.2 用地需求
-   - 6.3 用电/用水/气需求
-   - 6.4 政策及资金支持诉求（越具体越好）
-   - 6.5 落地实施初步计划
+   - 7.1 首选落地区域及理由
+   - 7.2 用地需求
+   - 7.3 用电/用水/气需求
+   - 7.4 政策及资金支持诉求（越具体越好）
+   - 7.5 落地实施初步计划
 8. 风险分析与应对措施
 9. 结论与建议
 
@@ -49,55 +74,55 @@ SYSTEM_PROMPT_STRICT = """你是一位非常专业的政府项目申报BP撰写�
 不要写任何前言、总结、道歉、说明，直接从第一个标题「项目基本信息」开始输出。
 """
 
-# ────────────────────────────────────────────────
-#  這裡選擇最簡單穩定的方式：直接使用強化版，不拼接不存在的變數
-# ────────────────────────────────────────────────
 FULL_SYSTEM_PROMPT = SYSTEM_PROMPT_STRICT
 
-# 如果你未來有其他提示內容想加，可以改成下面這種形式（但現在先保持簡單）
-# FULL_SYSTEM_PROMPT = SYSTEM_PROMPT_STRICT + "\n\n額外要求：請務必使用正式公文語氣"
-
-# 假設你有這個變數（如果沒有就註解掉或定義一個空字串）
-try:
-    TEMPLATES_TEXT
-except NameError:
-    TEMPLATES_TEXT = ""   # 如果沒有模板全文，就給空字串
+# 如果你有獨立的模板參考文本，可在此貼上
+TEMPLATES_TEXT = ""   # 暫時留空
 
 # ────────────────────────────────────────────────
-#               Streamlit 主程式
+#               Streamlit 介面
 # ────────────────────────────────────────────────
 
-st.title("政府BP & 落地方案生成工具")
+st.title("政府BP & 落地方案生成工具（通義千問版）")
 
 with st.form("project_form"):
-    company_name = st.text_input("申报主体*", placeholder="例：XX新能源科技有限公司")
-    project_name = st.text_input("项目名称*", placeholder="例：年产10GWh固态电池生产基地")
-    target_region = st.text_input("目标地区*", placeholder="例：四川省成都市")
-    industry = st.text_input("所属产业领域", placeholder="例：新能源")
+    company_name   = st.text_input("申报主体*", placeholder="例：極鴿（濟南）低空智能科技有限公司")
+    project_name   = st.text_input("项目名称*", placeholder="例：全國固態納米電池和無人機產業化項目")
+    target_region  = st.text_input("目标地区*", value="濟南")
+    industry       = st.text_input("所属产业领域", value="新能源")
     total_investment = st.number_input("总投资额（万元）", min_value=100, value=5000)
-    current_status = st.text_area("项目基本情况与核心亮点*", height=140)
+    current_status = st.text_area("项目基本情况与核心亮点*", height=180, 
+        value="""項目名稱：全國固態納米電池和無人機產業化項目計劃方案
+項目定位：無人機、eVTOL飛行汽車和全固態電池產業化研發生產
+項目願景：成為全球低空經濟領域兼具技術創新、資本穩健與治理智慧的標杆企業，以“無人機+固態電池+飛行汽車”三輪驅動，引領未來立體交通變革。""")
+    
     additional_file = st.file_uploader("上传补充材料（可选）", type=["docx", "pdf", "txt"])
 
     submit_button = st.form_submit_button("生成BP & 落地方案")
 
 if submit_button:
-    if not company_name or not project_name or not target_region or not current_status:
+    if not all([company_name, project_name, target_region, current_status]):
         st.error("请填写带*的必填项！")
-    else:
-        extra_text = ""
-        if additional_file:
-            try:
-                if additional_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-                    doc = Document(BytesIO(additional_file.read()))
-                    extra_text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())[:1200]
-                else:
-                    # pdf 或 txt 簡單處理（實際上 pdf 需要額外套件，這裡只示範 txt）
-                    extra_text = additional_file.read().decode("utf-8", errors="ignore")[:1200]
-            except Exception as e:
-                st.warning("文件解析失败，仅使用文字描述")
-                extra_text = ""
+        st.stop()
 
-        user_context = f"""申报主体：{company_name}
+    extra_text = ""
+    if additional_file is not None:
+        try:
+            file_type = additional_file.type
+            if "officedocument.wordprocessingml" in file_type:
+                from docx import Document
+                doc = Document(BytesIO(additional_file.read()))
+                extra_text = "\n".join(
+                    p.text.strip() for p in doc.paragraphs if p.text.strip()
+                )[:1500]
+            else:
+                extra_text = additional_file.read().decode("utf-8", errors="ignore")[:1500]
+        except Exception as e:
+            st.warning(f"文件解析失敗：{str(e)}，僅使用表單文字內容")
+            extra_text = ""
+
+    user_context = f"""\
+申报主体：{company_name}
 项目名称：{project_name}
 目标地区：{target_region}
 所属产业：{industry}
@@ -105,54 +130,48 @@ if submit_button:
 项目基本情况与核心亮点：
 {current_status}
 
-补充材料（已截断）：
+补充材料（已截断至约1500字）：
 {extra_text}
 """
 
-        start_time = time.time()
-        with st.spinner(f"正在生成完整政府BP及落地方案（预计 {MAX_GENERATION_SECONDS} 秒内完成）..."):
-            try:
-                response = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": FULL_SYSTEM_PROMPT + "\n\n模板内容参考：\n" + TEMPLATES_TEXT
-                        },
-                        {
-                            "role": "user",
-                            "content": f"请严格按照模板，一字不差输出完整BP（纯文本）：\n\n{user_context}"
-                        }
-                    ],
-                    temperature=TEMPERATURE,
-                    max_tokens=MAX_TOKENS,
-                    stream=False
-                )
+    start_time = time.time()
+    with st.spinner(f"正在生成完整政府BP及落地方案（预计 {MAX_GENERATION_SECONDS} 秒内完成）..."):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": FULL_SYSTEM_PROMPT + "\n\n模板内容参考：\n" + TEMPLATES_TEXT},
+                    {"role": "user",   "content": f"请严格按照模板，一字不差输出完整BP（纯文本）：\n\n{user_context}"}
+                ],
+                temperature=TEMPERATURE,
+                max_tokens=MAX_TOKENS,
+                stream=False
+            )
 
-                result = response.choices[0].message.content.strip()
-                elapsed = time.time() - start_time
+            result = response.choices[0].message.content.strip()
+            elapsed = time.time() - start_time
 
-                if elapsed > MAX_GENERATION_SECONDS - 5:
-                    st.warning(f"生成时间较长（{elapsed:.1f}秒），内容已尽量完整")
+            if elapsed > MAX_GENERATION_SECONDS - 5:
+                st.warning(f"生成耗时较长（{elapsed:.1f}秒），内容已尽量完整")
 
-                st.success(f"生成完成！（耗时 {elapsed:.1f} 秒）")
-                st.markdown(f"```text\n{result}\n```")
+            st.success(f"生成完成！（耗时 {elapsed:.1f} 秒）")
+            st.markdown("**生成結果**（純文本）")
+            st.code(result, language="text")
 
-                st.download_button(
-                    label="下载完整报告（.txt）",
-                    data=result,
-                    file_name=f"{project_name}_政府BP_落地方案_{time.strftime('%Y%m%d')}.txt",
-                    mime="text/plain"
-                )
+            safe_filename = project_name.replace(" ", "_").replace("/", "_")[:50]
+            st.download_button(
+                label="下载完整报告（.txt）",
+                data=result,
+                file_name=f"{safe_filename}_濟南_{time.strftime('%Y%m%d')}.txt",
+                mime="text/plain"
+            )
 
-            except Exception as e:
-                elapsed = time.time() - start_time
-                if elapsed > MAX_GENERATION_SECONDS - 2:
-                    st.error(
-                        f"生成超时（>{MAX_GENERATION_SECONDS}秒），建议：\n"
-                        "1. 缩短“项目基本情况”描述\n"
-                        "2. 移除或简化补充材料\n"
-                        "3. 再试一次"
-                    )
-                else:
-                    st.error(f"生成失败：{str(e)}")
+        except Exception as e:
+            elapsed = time.time() - start_time
+            err_str = str(e).lower()
+            if "timeout" in err_str or elapsed > MAX_GENERATION_SECONDS - 3:
+                st.error(f"生成超时或网络问题（耗时 {elapsed:.1f}秒）\n建議：\n1. 縮短描述文字\n2. 移除或縮減附件\n3. 稍後重試")
+            elif "invalid api key" in err_str or "authentication" in err_str:
+                st.error("API Key 無效或已過期，請檢查 Streamlit secrets 中的 dashscope.api_key")
+            else:
+                st.error(f"生成失败：{str(e)}\n請檢查模型名稱、API Key 或網路連線")

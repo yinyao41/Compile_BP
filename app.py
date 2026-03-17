@@ -27,7 +27,7 @@ MAX_GENERATION_SECONDS = 90
 MAX_TOKENS = 4200
 TEMPERATURE = 0.25
 
-# 强化版系统提示（已转为简体）
+# 强化版系统提示（简体）
 SYSTEM_PROMPT_STRICT = """你是一位非常专业的政府项目申报BP撰写专家，专精产业招商、落地政策分析、政府汇报材料。
 你的任务是：严格按照下面提供的【政府BP标准模板】结构和顺序，一字不差地输出完整文档。
 禁止添加额外标题、禁止省略任何章节、禁止改变章节顺序、禁止使用Markdown标题符号、禁止输出```包围块。
@@ -63,7 +63,7 @@ FULL_SYSTEM_PROMPT = SYSTEM_PROMPT_STRICT
 TEMPLATES_TEXT = ""  # 暂时留空
 
 # Streamlit 界面（简体）
-st.title("政府BP 落地方案生成工具")
+st.title("政府BP & 落地方案生成工具")
 
 with st.form("project_form"):
     company_name = st.text_input("申报主体*", placeholder="例：极鸽（济南）低空智能科技有限公司")
@@ -133,11 +133,50 @@ if submit_button:
                 st.warning(f"生成耗时较长（{elapsed:.1f}秒），内容已尽量完整")
 
             st.success(f"生成完成！（耗时 {elapsed:.1f} 秒）")
+            st.markdown("### 生成结果")
 
-            # 直接用 markdown 展示纯文本，避免 code 块的横向滚动
-            st.markdown("### 生成结果（纯文本）")
-            st.markdown(result.replace("\n", "  \n"), unsafe_allow_html=False)
+            # ────────────── 推荐组合使用的处理逻辑 ──────────────
 
+            # (1) 处理表格中特定字段加粗
+            bold_fields = ["项目名称", "目标地区", "项目愿景", "项目愿景："]
+            processed = result
+            for field in bold_fields:
+                # 尝试匹配常见表格写法
+                processed = processed.replace(
+                    f"{field} |", f"{field} | **"
+                ).replace(
+                    f"| {field} |", f"| **{field}** |"
+                ).replace(
+                    f"{field}：", f"**{field}**："
+                )
+
+            # (2) 对「项目背景与意义」部分做视觉区分
+            # 使用侧边彩条 + 缩进 + 行距
+            if "2. 项目背景与意义" in processed:
+                # 插入开始标记
+                processed = processed.replace(
+                    "2. 项目背景与意义",
+                    '<div style="border-left: 4px solid #3b82f6; padding-left: 1.2em; margin: 1.8em 0; line-height: 1.85; font-size: 15.2px;">'
+                    '**2. 项目背景与意义**'
+                )
+
+                # 尝试找到下一节，关闭 div（不完美但实用）
+                next_section = "3. 项目建设内容"
+                if next_section in processed:
+                    pos = processed.find(next_section)
+                    processed = (
+                        processed[:pos] +
+                        "</div>\n\n" +
+                        processed[pos:]
+                    )
+                else:
+                    # 如果没找到下一节，就在结尾关闭
+                    processed += "</div>"
+
+            # 最终渲染（允许少量 HTML）
+            st.markdown(processed, unsafe_allow_html=True)
+
+            # 下载按钮使用原始文本（不带 HTML）
             safe_filename = project_name.replace(" ", "_").replace("/", "_")[:50]
             st.download_button(
                 label="下载完整报告（.txt）",

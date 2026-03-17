@@ -63,7 +63,7 @@ FULL_SYSTEM_PROMPT = SYSTEM_PROMPT_STRICT
 TEMPLATES_TEXT = ""  # 暂时留空
 
 # Streamlit 界面（简体）
-st.title("政府BP & 落地方案生成工具")
+st.title("政府BP 落地方案生成工具")
 
 with st.form("project_form"):
     company_name = st.text_input("申报主体*", placeholder="例：极鸽（济南）低空智能科技有限公司")

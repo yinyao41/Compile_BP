@@ -1,5 +1,7 @@
+
 # -*- coding: utf-8 -*-
 import streamlit as st
+import os
 from io import BytesIO
 import time
 
@@ -7,44 +9,37 @@ import time
 from openai import OpenAI
 
 # ────────────────────────────────────────────────
-#          初始化 通義千問 client
+# 初始化 通義千問 client - 使用最穩定的平級環境變數讀取方式
 # ────────────────────────────────────────────────
-# 推薦方式：在 .streamlit/secrets.toml 中設定：
-# [dashscope]
-# api_key = "sk-你的通義千問API Key..."
-
-if "dashscope" not in st.secrets or "api_key" not in st.secrets["dashscope"]:
-    st.error("請在 Streamlit secrets 中設定 dashscope.api_key\n（即通義千問的 DASHSCOPE_API_KEY）")
+api_key = os.getenv("DASHSCOPE_API_KEY")
+if not api_key:
+    st.error("未找到環境變數 DASHSCOPE_API_KEY，請在 Streamlit Cloud Secrets 中設定")
     st.stop()
 
 client = OpenAI(
-    api_key = st.secrets["dashscope"]["api_key"],
-    base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    api_key=api_key,
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 
-# 選擇你有權限使用的模型（常見選項）
-# MODEL_NAME = "qwen-max"          # 旗艦版，效果最好
-# MODEL_NAME = "qwen-plus"         # 平衡型
-MODEL_NAME = "qwen-turbo"          # 速度快、成本低（預設推薦測試用）
-# MODEL_NAME = "qwen-max-latest"   # 最新版（視阿里更新而定）
+# 選擇模型（建議先用 turbo 測試，穩定後可換 max）
+MODEL_NAME = "qwen-turbo"           # 速度快、成本低
+# MODEL_NAME = "qwen-plus"          # 平衡
+# MODEL_NAME = "qwen-max"           # 效果最好，但較貴/較慢
 
 # ────────────────────────────────────────────────
-#  其他常數
+# 其他常數
 # ────────────────────────────────────────────────
 MAX_GENERATION_SECONDS = 90
 MAX_TOKENS = 4200
 TEMPERATURE = 0.25
 
 # ────────────────────────────────────────────────
-#  強化版系統提示
+# 強化版系統提示
 # ────────────────────────────────────────────────
 SYSTEM_PROMPT_STRICT = """你是一位非常专业的政府项目申报BP撰写专家，专精产业招商、落地政策分析、政府汇报材料。
-
 你的任务是：严格按照下面提供的【政府BP标准模板】结构和顺序，一字不差地输出完整文档。
 禁止添加额外标题、禁止省略任何章节、禁止改变章节顺序、禁止使用Markdown标题符号、禁止输出```包围块。
-
 【政府BP标准模板】必须包含以下所有一级标题（顺序不可变）：
-
 1. 项目基本信息
 2. 项目背景与意义
 3. 项目建设内容
@@ -59,7 +54,6 @@ SYSTEM_PROMPT_STRICT = """你是一位非常专业的政府项目申报BP撰写�
    - 7.5 落地实施初步计划
 8. 风险分析与应对措施
 9. 结论与建议
-
 输出要求：
 - 全部使用纯文本，不要出现任何 markdown 语法（#、*、- 等）
 - 每个一级标题后空一行
@@ -69,35 +63,30 @@ SYSTEM_PROMPT_STRICT = """你是一位非常专业的政府项目申报BP撰写�
 - 数字一律使用中文表示（如：伍仟万元、叁年）
 - 语气正式、客观、数据导向、突出“符合国家/地方战略”
 - 总长度控制在3800–4500字之间
-
 现在根据用户提供的信息，严格按照上述模板顺序输出完整BP及落地方案。
 不要写任何前言、总结、道歉、说明，直接从第一个标题「项目基本信息」开始输出。
 """
 
 FULL_SYSTEM_PROMPT = SYSTEM_PROMPT_STRICT
-
-# 如果你有獨立的模板參考文本，可在此貼上
-TEMPLATES_TEXT = ""   # 暫時留空
+TEMPLATES_TEXT = ""  # 暫時留空
 
 # ────────────────────────────────────────────────
-#               Streamlit 介面
+# Streamlit 介面
 # ────────────────────────────────────────────────
-
 st.title("政府BP & 落地方案生成工具（通義千問版）")
 
 with st.form("project_form"):
-    company_name   = st.text_input("申报主体*", placeholder="例：極鴿（濟南）低空智能科技有限公司")
-    project_name   = st.text_input("项目名称*", placeholder="例：全國固態納米電池和無人機產業化項目")
-    target_region  = st.text_input("目标地区*", value="濟南")
-    industry       = st.text_input("所属产业领域", value="新能源")
+    company_name = st.text_input("申报主体*", placeholder="例：極鴿（濟南）低空智能科技有限公司")
+    project_name = st.text_input("项目名称*", placeholder="例：全國固態納米電池和無人機產業化項目")
+    target_region = st.text_input("目标地区*", value="濟南")
+    industry = st.text_input("所属产业领域", value="新能源")
     total_investment = st.number_input("总投资额（万元）", min_value=100, value=5000)
-    current_status = st.text_area("项目基本情况与核心亮点*", height=180, 
+    current_status = st.text_area("项目基本情况与核心亮点*", height=180,
         value="""項目名稱：全國固態納米電池和無人機產業化項目計劃方案
 項目定位：無人機、eVTOL飛行汽車和全固態電池產業化研發生產
 項目願景：成為全球低空經濟領域兼具技術創新、資本穩健與治理智慧的標杆企業，以“無人機+固態電池+飛行汽車”三輪驅動，引領未來立體交通變革。""")
-    
-    additional_file = st.file_uploader("上传补充材料（可选）", type=["docx", "pdf", "txt"])
 
+    additional_file = st.file_uploader("上传补充材料（可选）", type=["docx", "pdf", "txt"])
     submit_button = st.form_submit_button("生成BP & 落地方案")
 
 if submit_button:
@@ -129,7 +118,6 @@ if submit_button:
 总投资额：{total_investment:,}万元
 项目基本情况与核心亮点：
 {current_status}
-
 补充材料（已截断至约1500字）：
 {extra_text}
 """
@@ -141,7 +129,7 @@ if submit_button:
                 model=MODEL_NAME,
                 messages=[
                     {"role": "system", "content": FULL_SYSTEM_PROMPT + "\n\n模板内容参考：\n" + TEMPLATES_TEXT},
-                    {"role": "user",   "content": f"请严格按照模板，一字不差输出完整BP（纯文本）：\n\n{user_context}"}
+                    {"role": "user", "content": f"请严格按照模板，一字不差输出完整BP（纯文本）：\n\n{user_context}"}
                 ],
                 temperature=TEMPERATURE,
                 max_tokens=MAX_TOKENS,
@@ -171,7 +159,7 @@ if submit_button:
             err_str = str(e).lower()
             if "timeout" in err_str or elapsed > MAX_GENERATION_SECONDS - 3:
                 st.error(f"生成超时或网络问题（耗时 {elapsed:.1f}秒）\n建議：\n1. 縮短描述文字\n2. 移除或縮減附件\n3. 稍後重試")
-            elif "invalid api key" in err_str or "authentication" in err_str:
-                st.error("API Key 無效或已過期，請檢查 Streamlit secrets 中的 dashscope.api_key")
+            elif any(x in err_str for x in ["invalid api key", "authentication", "unauthorized"]):
+                st.error("API Key 驗證失敗，請確認 Secrets 中的 DASHSCOPE_API_KEY 是否正確")
             else:
                 st.error(f"生成失败：{str(e)}\n請檢查模型名稱、API Key 或網路連線")

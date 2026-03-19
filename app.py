@@ -70,7 +70,7 @@ with st.form("project_form"):
     project_name = st.text_input("项目名称*", placeholder="例：***项目")
     target_region = st.text_input("目标地区*", value=" ")
     industry = st.text_input("所属产业领域", value=" ")
-    total_investment = st.number_input("总投资额（万元）", min_value=100, value=  )
+    total_investment = st.number_input("总投资额（万元）", min_value=100, value=***)
     current_status = st.text_area("项目基本情况与核心亮点*", height=180,
         value=""" """)
 

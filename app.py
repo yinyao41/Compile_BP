@@ -68,13 +68,11 @@ st.title("政府BP 落地方案生成工具")
 with st.form("project_form"):
     company_name = st.text_input("申报主体*", placeholder="例：***科技有限公司")
     project_name = st.text_input("项目名称*", placeholder="例：***项目")
-    target_region = st.text_input("目标地区*", value="济南")
-    industry = st.text_input("所属产业领域", value="新能源")
-    total_investment = st.number_input("总投资额（万元）", min_value=100, value=5000)
+    target_region = st.text_input("目标地区*", value=" ")
+    industry = st.text_input("所属产业领域", value=" ")
+    total_investment = st.number_input("总投资额（万元）", min_value=100, value=  )
     current_status = st.text_area("项目基本情况与核心亮点*", height=180,
-        value="""项目名称：***项目计划方案
-项目定位：***产业化研发生产
-项目愿景：成为***。""")
+        value=""" """)
 
     additional_file = st.file_uploader("上传补充材料（可选）", type=["docx", "pdf", "txt"])
     submit_button = st.form_submit_button("生成BP & 落地方案")

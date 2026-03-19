@@ -59,18 +59,30 @@ st.title("政府BP 落地方案生成工具")
 
 with st.form("project_form"):
     company_name = st.text_input("申报主体*", placeholder="例：***科技有限公司")
-    project_name = st.text_input("项目名称*", placeholder="例：***项目")
-    target_region = st.text_input("目标地区*", value="济南")
-    industry = st.text_input("所属产业领域", value="新能源")
     
-    # 修改這裡：讓總投資額一開始空白
+    project_name = st.text_input("项目名称*", placeholder="例：***项目")
+    
+    # 修改：目標地區初始空白
+    target_region = st.text_input(
+        "目标地区*",
+        value="",                     # 明確設為空 → 顯示空白
+        placeholder="请输入目标地区，例如：济南"
+    )
+    
+    # 修改：所屬產業領域初始空白
+    industry = st.text_input(
+        "所属产业领域",
+        value="",                     # 明確設為空 → 顯示空白
+        placeholder="请输入所属产业，例如：新能源"
+    )
+    
     total_investment = st.number_input(
         "总投资额（万元）",
-        min_value=100.0,              # 使用浮點避免整數限制
-        value=None,                   # 關鍵：None → 輸入框空白
+        min_value=100.0,
+        value=None,                   # 保持空白
         step=100.0,
-        format="%.0f",                # 顯示整數
-        placeholder="请输入金额"       # 顯示提示文字（更好看）
+        format="%.0f",
+        placeholder="请输入金额"
     )
     
     current_status = st.text_area(
@@ -84,13 +96,20 @@ with st.form("project_form"):
     submit_button = st.form_submit_button("生成BP & 落地方案")
 
 if submit_button:
-    if not all([company_name, project_name, target_region, current_status]):
-        st.error("请填写带*的必填项！")
-        st.stop()
-
-    # 處理 total_investment 為 None 的情況（使用者沒填）
-    if total_investment is None:
-        st.error("请填写总投资额（万元）！")
+    # 加強驗證：目標地區和產業領域也要求填寫（視需求可調整）
+    required_fields = {
+        "申报主体": company_name,
+        "项目名称": project_name,
+        "目标地区": target_region.strip(),
+        "项目基本情况与核心亮点": current_status.strip()
+    }
+    
+    missing = [k for k, v in required_fields.items() if not v]
+    if missing or total_investment is None:
+        error_msg = "请填写以下必填项：\n" + "\n".join(missing)
+        if total_investment is None:
+            error_msg += "\n- 总投资额（万元）"
+        st.error(error_msg)
         st.stop()
 
     extra_text = ""
@@ -114,7 +133,7 @@ if submit_button:
 项目名称：{project_name}
 目标地区：{target_region}
 所属产业：{industry}
-总投资额：{total_investment:,.0f}万元
+总投资额：{total_investment:,.0f if total_investment is not None else '未填'}万元
 项目基本情况与核心亮点：
 {current_status}
 补充材料（已截断至约1500字）：
@@ -174,7 +193,7 @@ if submit_button:
             st.download_button(
                 label="下载完整报告（.txt）",
                 data=result,
-                file_name=f"{safe_filename}_{target_region}_{time.strftime('%Y%m%d')}.txt",
+                file_name=f"{safe_filename}_{target_region or '未知地区'}_{time.strftime('%Y%m%d')}.txt",
                 mime="text/plain"
             )
 

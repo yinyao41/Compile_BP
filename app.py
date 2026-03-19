@@ -3,10 +3,9 @@ import streamlit as st
 import os
 from io import BytesIO
 import time
-
 from openai import OpenAI
 
-# 初始化 通义千问 client - 使用最稳定的平级环境变量读取方式
+# 初始化 通义千问 client
 api_key = os.getenv("DASHSCOPE_API_KEY")
 if not api_key:
     st.error("未找到环境变量 DASHSCOPE_API_KEY，请在 Streamlit Cloud Secrets 中设置")
@@ -17,17 +16,11 @@ client = OpenAI(
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 
-# 选择模型（建议先用 turbo 测试，稳定后再换 max）
-MODEL_NAME = "qwen-turbo"           # 速度快、成本低
-# MODEL_NAME = "qwen-plus"          # 平衡
-# MODEL_NAME = "qwen-max"           # 效果最好，但较贵/较慢
-
-# 其他常量
+MODEL_NAME = "qwen-turbo"
 MAX_GENERATION_SECONDS = 90
 MAX_TOKENS = 4200
 TEMPERATURE = 0.25
 
-# 强化版系统提示（简体）
 SYSTEM_PROMPT_STRICT = """你是一位非常专业的政府项目申报BP撰写专家，专精产业招商、落地政策分析、政府汇报材料。
 你的任务是：严格按照下面提供的【政府BP标准模板】结构和顺序，一字不差地输出完整文档。
 禁止添加额外标题、禁止省略任何章节、禁止改变章节顺序、禁止使用Markdown标题符号、禁止输出```包围块。
@@ -60,26 +53,44 @@ SYSTEM_PROMPT_STRICT = """你是一位非常专业的政府项目申报BP撰写�
 """
 
 FULL_SYSTEM_PROMPT = SYSTEM_PROMPT_STRICT
-TEMPLATES_TEXT = ""  # 暂时留空
+TEMPLATES_TEXT = ""
 
-# Streamlit 界面（简体）
 st.title("政府BP 落地方案生成工具")
 
 with st.form("project_form"):
     company_name = st.text_input("申报主体*", placeholder="例：***科技有限公司")
     project_name = st.text_input("项目名称*", placeholder="例：***项目")
-    target_region = st.text_input("目标地区*", value=" ")
-    industry = st.text_input("所属产业领域", value=" ")
-    total_investment = st.number_input("总投资额（万元）", min_value=100, value=***)
-    current_status = st.text_area("项目基本情况与核心亮点*", height=180,
-        value=""" """)
-
+    target_region = st.text_input("目标地区*", value="济南")
+    industry = st.text_input("所属产业领域", value="新能源")
+    
+    # 修改這裡：讓總投資額一開始空白
+    total_investment = st.number_input(
+        "总投资额（万元）",
+        min_value=100.0,              # 使用浮點避免整數限制
+        value=None,                   # 關鍵：None → 輸入框空白
+        step=100.0,
+        format="%.0f",                # 顯示整數
+        placeholder="请输入金额"       # 顯示提示文字（更好看）
+    )
+    
+    current_status = st.text_area(
+        "项目基本情况与核心亮点*",
+        height=180,
+        value=""
+    )
+    
     additional_file = st.file_uploader("上传补充材料（可选）", type=["docx", "pdf", "txt"])
+    
     submit_button = st.form_submit_button("生成BP & 落地方案")
 
 if submit_button:
     if not all([company_name, project_name, target_region, current_status]):
         st.error("请填写带*的必填项！")
+        st.stop()
+
+    # 處理 total_investment 為 None 的情況（使用者沒填）
+    if total_investment is None:
+        st.error("请填写总投资额（万元）！")
         st.stop()
 
     extra_text = ""
@@ -103,7 +114,7 @@ if submit_button:
 项目名称：{project_name}
 目标地区：{target_region}
 所属产业：{industry}
-总投资额：{total_investment:,}万元
+总投资额：{total_investment:,.0f}万元
 项目基本情况与核心亮点：
 {current_status}
 补充材料（已截断至约1500字）：
@@ -133,13 +144,9 @@ if submit_button:
             st.success(f"生成完成！（耗时 {elapsed:.1f} 秒）")
             st.markdown("### 生成结果")
 
-            # ────────────── 推荐组合使用的处理逻辑 ──────────────
-
-            # (1) 处理表格中特定字段加粗
             bold_fields = ["项目名称", "目标地区", "项目愿景", "项目愿景："]
             processed = result
             for field in bold_fields:
-                # 尝试匹配常见表格写法
                 processed = processed.replace(
                     f"{field} |", f"{field} | **"
                 ).replace(
@@ -148,38 +155,26 @@ if submit_button:
                     f"{field}：", f"**{field}**："
                 )
 
-            # (2) 对「项目背景与意义」部分做视觉区分
-            # 使用侧边彩条 + 缩进 + 行距
             if "2. 项目背景与意义" in processed:
-                # 插入开始标记
                 processed = processed.replace(
                     "2. 项目背景与意义",
                     '<div style="border-left: 4px solid #3b82f6; padding-left: 1.2em; margin: 1.8em 0; line-height: 1.85; font-size: 15.2px;">'
                     '**2. 项目背景与意义**'
                 )
-
-                # 尝试找到下一节，关闭 div（不完美但实用）
                 next_section = "3. 项目建设内容"
                 if next_section in processed:
                     pos = processed.find(next_section)
-                    processed = (
-                        processed[:pos] +
-                        "</div>\n\n" +
-                        processed[pos:]
-                    )
+                    processed = processed[:pos] + "</div>\n\n" + processed[pos:]
                 else:
-                    # 如果没找到下一节，就在结尾关闭
                     processed += "</div>"
 
-            # 最终渲染（允许少量 HTML）
             st.markdown(processed, unsafe_allow_html=True)
 
-            # 下载按钮使用原始文本（不带 HTML）
             safe_filename = project_name.replace(" ", "_").replace("/", "_")[:50]
             st.download_button(
                 label="下载完整报告（.txt）",
                 data=result,
-                file_name=f"{safe_filename}_济南_{time.strftime('%Y%m%d')}.txt",
+                file_name=f"{safe_filename}_{target_region}_{time.strftime('%Y%m%d')}.txt",
                 mime="text/plain"
             )
 

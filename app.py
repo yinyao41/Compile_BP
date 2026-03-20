@@ -16,16 +16,17 @@ client = OpenAI(
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 
-FAST_MODEL = "qwen-plus"
-STRONG_MODEL = "qwen-max"
-MAX_TOKENS_PER_CALL = 5500
-TEMPERATURE = 0.10
+# ─── 速度优化配置 ────────────────────────────────────────
+FAST_MODEL   = "qwen-plus"           # 大部分章节使用
+STRONG_MODEL = "qwen-max"            # 只用于摘要 + 财务 + 政策诉求
+TEMPERATURE  = 0.07
+TOP_P        = 0.90
+MAX_TOKENS_PER_CALL = 6800
 
 SYSTEM_BASE = """你是一位资深政府产业基金投资决策顾问，擅长撰写符合政府招商逻辑的商业计划书结构化提纲。
 严格使用 Markdown 格式输出，不要添加多余说明。
 语气正式、专业，使用政府常用术语。
-所有关键数据使用 [占位符] 标记。
-现在根据以下项目信息生成内容。"""
+所有关键数据使用 [占位符] 标记。"""
 
 USER_PROJECT_INFO_TEMPLATE = """目标地区：{target}
 项目名称：{project}
@@ -35,17 +36,27 @@ USER_PROJECT_INFO_TEMPLATE = """目标地区：{target}
 核心亮点及材料：
 {highlights_and_extra}"""
 
+# 原始章节定义（用于后续拆分和显示）
 SECTIONS = [
-    {"id": "zero",  "title": "零、Executive Summary / 项目决策摘要", "model": STRONG_MODEL},
-    {"id": "one",   "title": "一、项目概述与战略价值", "model": FAST_MODEL},
-    {"id": "two",   "title": "二、市场分析", "model": FAST_MODEL},
-    {"id": "three", "title": "三、技术实力与产品壁垒", "model": FAST_MODEL},
-    {"id": "four",  "title": "四、产业化落地实施计划", "model": FAST_MODEL},
-    {"id": "five",  "title": "五、商业模式与财务预测", "model": STRONG_MODEL},
-    {"id": "six",   "title": "六、产业带动与社会效益", "model": FAST_MODEL},
-    {"id": "seven", "title": "七、政策支持诉求与替代方案", "model": FAST_MODEL},
-    {"id": "eight", "title": "八、风险分析与防控措施", "model": FAST_MODEL},
-    {"id": "nine",  "title": "九、投资结论与下一步行动计划", "model": STRONG_MODEL},
+    {"id": "zero",  "title": "零、Executive Summary / 项目决策摘要"},
+    {"id": "one",   "title": "一、项目概述与战略价值"},
+    {"id": "two",   "title": "二、市场分析"},
+    {"id": "three", "title": "三、技术实力与产品壁垒"},
+    {"id": "four",  "title": "四、产业化落地实施计划"},
+    {"id": "five",  "title": "五、商业模式与财务预测"},
+    {"id": "six",   "title": "六、产业带动与社会效益"},
+    {"id": "seven", "title": "七、政策支持诉求与替代方案"},
+    {"id": "eight", "title": "八、风险分析与防控措施"},
+    {"id": "nine",  "title": "九、投资结论与下一步行动计划"},
+]
+
+# 合并生成组（5次调用，大幅减少请求次数）
+GENERATION_GROUPS = [
+    {"group_id": 0, "ids": ["zero"],   "title": "项目决策摘要",          "model": STRONG_MODEL},
+    {"group_id": 1, "ids": ["one","two"], "title": "概述+市场分析",      "model": FAST_MODEL},
+    {"group_id": 2, "ids": ["three","four"], "title": "技术+落地计划",   "model": FAST_MODEL},
+    {"group_id": 3, "ids": ["five"],   "title": "商业模式与财务预测",    "model": STRONG_MODEL},
+    {"group_id": 4, "ids": ["six","seven","eight","nine"], "title": "带动+政策+风险+结论", "model": FAST_MODEL},
 ]
 
 st.title("政府BP结构化提纲生成工具")
@@ -80,22 +91,17 @@ if submit:
         st.error("请填写所有带 * 的必填项")
         st.stop()
 
-    # 读取上传文件
+    # 读取文件
     extra_text = ""
     try:
         content_bytes = additional_file.read()
         file_type = additional_file.type
-
         if "officedocument.wordprocessingml" in file_type or file_type.endswith("docx"):
             from docx import Document
             doc = Document(BytesIO(content_bytes))
             extra_text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
         else:
-            try:
-                extra_text = content_bytes.decode("utf-8", errors="ignore")
-            except:
-                extra_text = "[文件内容无法解码，仅支持文本类文件]"
-
+            extra_text = content_bytes.decode("utf-8", errors="ignore")
         extra_text = extra_text[:2800]
     except Exception as e:
         st.warning(f"文件读取失败：{str(e)[:80]}... 将仅使用文本框内容")
@@ -119,42 +125,59 @@ if submit:
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    for idx, section in enumerate(SECTIONS):
-        # 中性进度提示，不暴露具体章节名
-        status_text.text(f"正在生成第 {idx+1} / {len(SECTIONS)} 部分（预计总耗时 60-120 秒）")
-        
+    for idx, group in enumerate(GENERATION_GROUPS):
+        status_text.text(f"正在生成第 {idx+1} / {len(GENERATION_GROUPS)} 部分（预计 60–120 秒）")
+
+        # 构建本次合并的章节列表
+        chapter_list = "\n".join([f"- **{SECTIONS[list(SECTIONS).index(next(s for s in SECTIONS if s['id']==sid))]['title']}**" 
+                                 for sid in group["ids"]])
+
+        user_prompt = user_base + f"""
+
+请严格按照以下顺序输出这些章节的完整 Markdown 内容，不要输出其他任何文字：
+
+{chapter_list}
+
+每个章节之间用 --- 分隔。
+"""
+
         try:
             response = client.chat.completions.create(
-                model=section.get("model", FAST_MODEL),
+                model=group["model"],
                 messages=[
                     {"role": "system", "content": SYSTEM_BASE},
-                    {"role": "user", "content": user_base + f"\n\n请严格只输出以下章节的完整 Markdown 内容，不要输出其他任何文字：\n**{section['title']}**"}
+                    {"role": "user",   "content": user_prompt}
                 ],
                 temperature=TEMPERATURE,
+                top_p=TOP_P,
                 max_tokens=MAX_TOKENS_PER_CALL,
                 stream=False
             )
-            content = response.choices[0].message.content.strip()
-            full_result_parts[section["id"]] = content
-        except Exception as e:
-            full_result_parts[section["id"]] = f"【本节生成失败】{str(e)[:120]}"
+            raw_content = response.choices[0].message.content.strip()
 
-        progress_bar.progress((idx + 1) / len(SECTIONS))
+            # 按 --- 分割回各个章节
+            parts = [p.strip() for p in ("---" + raw_content).split("---") if p.strip()]
+
+            for i, sec_id in enumerate(group["ids"]):
+                full_result_parts[sec_id] = parts[i] if i < len(parts) else "（内容生成不完整）"
+
+        except Exception as e:
+            for sec_id in group["ids"]:
+                full_result_parts[sec_id] = f"【生成失败】{str(e)[:100]}"
+
+        progress_bar.progress((idx + 1) / len(GENERATION_GROUPS))
 
     total_time = time.time() - total_start
-
     status_text.empty()
     st.success(f"生成完成，总耗时 {total_time:.1f} 秒")
 
     st.markdown("### 生成结果")
 
     for section in SECTIONS:
-        title = section["title"]
         content = full_result_parts.get(section["id"], "（无内容）")
 
         if section["id"] == "zero":
-            st.markdown(f"## {title}")
-            # 尝试提取摘要中的关键字段并转为表格
+            # ─── 摘要部分：只显示表格 ───
             table_data = []
             lines = content.split("\n")
             current_key = ""
@@ -162,10 +185,9 @@ if submit:
 
             for line in lines:
                 line = line.strip()
-                if not line:
-                    continue
-                # 匹配常见的键值对格式，如 ## 项目名称 / ### 项目名称
-                match = re.match(r"#{2,3}\s*(.+?)(?:\s*/.+?)?\s*$", line)
+                if not line: continue
+
+                match = re.match(r"#{2,4}\s*(.+?)(?:\s*/.+?)?\s*$", line)
                 if match:
                     if current_key and current_value:
                         table_data.append((current_key, current_value.strip()))
@@ -173,41 +195,31 @@ if submit:
                     current_value = ""
                 else:
                     if current_key:
-                        current_value += " " + line
+                        current_value += (" " if current_value else "") + line
 
             if current_key and current_value:
                 table_data.append((current_key, current_value.strip()))
 
             if table_data:
-                st.markdown("#### 项目决策摘要")
-                st.table(table_data)  # 或 st.markdown 用表格语法更美观
+                table_md = "| 字段名称 | 内容 |\n|----------|------|\n"
+                for key, value in table_data:
+                    clean_value = re.sub(r'\s+', ' ', value).strip()
+                    table_md += f"| {key} | {clean_value} |\n"
+                st.markdown(table_md)
             else:
-                # 如果提取失败，就直接显示原文
                 st.markdown(content)
         else:
-            st.markdown(f"## {title}")
+            st.markdown(f"## {section['title']}")
             st.markdown(content)
 
         st.markdown("---")
 
-    # 下载部分
+    # 下载
     full_md_content = ""
     for sec in SECTIONS:
-        full_md_content += f"# {sec['title']}\n\n"
-        full_md_content += full_result_parts.get(sec["id"], "") + "\n\n---\n\n"
+        full_md_content += f"# {sec['title']}\n\n{full_result_parts.get(sec['id'], '')}\n\n---\n\n"
 
     safe_filename = f"{project_name.replace(' ', '_')}_{target_region.replace(' ', '_') or '未知地区'}_{time.strftime('%Y%m%d')}"
 
-    st.download_button(
-        label="下载 Markdown 版",
-        data=full_md_content,
-        file_name=f"{safe_filename}_政府BP提纲.md",
-        mime="text/markdown"
-    )
-
-    st.download_button(
-        label="下载纯文本版",
-        data=full_md_content,
-        file_name=f"{safe_filename}_纯文本.txt",
-        mime="text/plain"
-    )
+    st.download_button("下载 Markdown 版", full_md_content, f"{safe_filename}_政府BP提纲.md", "text/markdown")
+    st.download_button("下载纯文本版", full_md_content, f"{safe_filename}_纯文本.txt", "text/plain")

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 import os
+import re
 from io import BytesIO
 import time
 from openai import OpenAI
@@ -47,7 +48,7 @@ SECTIONS = [
     {"id": "nine",  "title": "九、投资结论与下一步行动计划", "model": STRONG_MODEL},
 ]
 
-st.title("政府产业投资 BP 生成工具")
+st.title("政府BP结构化提纲生成工具")
 
 with st.form("bp_form"):
     company_name = st.text_input("申报主体*", placeholder="例：XX科技有限公司")
@@ -90,13 +91,12 @@ if submit:
             doc = Document(BytesIO(content_bytes))
             extra_text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
         else:
-            # pdf / txt 简单处理
             try:
                 extra_text = content_bytes.decode("utf-8", errors="ignore")
             except:
                 extra_text = "[文件内容无法解码，仅支持文本类文件]"
 
-        extra_text = extra_text[:2800]  # 防止prompt过长
+        extra_text = extra_text[:2800]
     except Exception as e:
         st.warning(f"文件读取失败：{str(e)[:80]}... 将仅使用文本框内容")
 
@@ -120,7 +120,8 @@ if submit:
     status_text = st.empty()
 
     for idx, section in enumerate(SECTIONS):
-        status_text.text(f"正在生成：{section['title']}  ({idx+1} / {len(SECTIONS)})")
+        # 中性进度提示，不暴露具体章节名
+        status_text.text(f"正在生成第 {idx+1} / {len(SECTIONS)} 部分（预计总耗时 60-120 秒）")
         
         try:
             response = client.chat.completions.create(
@@ -141,16 +142,55 @@ if submit:
         progress_bar.progress((idx + 1) / len(SECTIONS))
 
     total_time = time.time() - total_start
+
+    status_text.empty()
     st.success(f"生成完成，总耗时 {total_time:.1f} 秒")
 
     st.markdown("### 生成结果")
 
     for section in SECTIONS:
-        st.markdown(f"## {section['title']}")
-        st.markdown(full_result_parts.get(section["id"], "（无内容）"))
+        title = section["title"]
+        content = full_result_parts.get(section["id"], "（无内容）")
+
+        if section["id"] == "zero":
+            st.markdown(f"## {title}")
+            # 尝试提取摘要中的关键字段并转为表格
+            table_data = []
+            lines = content.split("\n")
+            current_key = ""
+            current_value = ""
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                # 匹配常见的键值对格式，如 ## 项目名称 / ### 项目名称
+                match = re.match(r"#{2,3}\s*(.+?)(?:\s*/.+?)?\s*$", line)
+                if match:
+                    if current_key and current_value:
+                        table_data.append((current_key, current_value.strip()))
+                    current_key = match.group(1).strip()
+                    current_value = ""
+                else:
+                    if current_key:
+                        current_value += " " + line
+
+            if current_key and current_value:
+                table_data.append((current_key, current_value.strip()))
+
+            if table_data:
+                st.markdown("#### 项目决策摘要")
+                st.table(table_data)  # 或 st.markdown 用表格语法更美观
+            else:
+                # 如果提取失败，就直接显示原文
+                st.markdown(content)
+        else:
+            st.markdown(f"## {title}")
+            st.markdown(content)
+
         st.markdown("---")
 
-    # 拼接完整 md 用于下载
+    # 下载部分
     full_md_content = ""
     for sec in SECTIONS:
         full_md_content += f"# {sec['title']}\n\n"

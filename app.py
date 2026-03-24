@@ -48,7 +48,7 @@ SECTIONS = [
     {"id": "nine",  "title": "九、投资结论与下一步行动计划", "model": STRONG_MODEL},
 ]
 
-st.title("政府BP结构化提纲生成工具")
+st.title("企业落地分析")
 
 with st.form("bp_form"):
     company_name = st.text_input("申报主体*", placeholder="例：XX科技有限公司")
@@ -205,7 +205,7 @@ if submit:
     st.download_button(
         label="下载 Markdown 版",
         data=full_md_content,
-        file_name=f"{safe_filename}_政府BP提纲.md",
+        file_name=f"{safe_filename}_企业落地分析.md",
         mime="text/markdown"
     )
 

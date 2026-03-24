@@ -36,16 +36,16 @@ USER_PROJECT_INFO_TEMPLATE = """目标地区：{target}
 {highlights_and_extra}"""
 
 SECTIONS = [
-    {"id": "zero",  "title": "零、Executive Summary / 项目决策摘要", "model": STRONG_MODEL},
-    {"id": "one",   "title": "一、项目概述与战略价值", "model": FAST_MODEL},
-    {"id": "two",   "title": "二、市场分析", "model": FAST_MODEL},
+    {"id": "zero", "title": "零、Executive Summary / 项目决策摘要", "model": STRONG_MODEL},
+    {"id": "one", "title": "一、项目概述与战略价值", "model": FAST_MODEL},
+    {"id": "two", "title": "二、市场分析", "model": FAST_MODEL},
     {"id": "three", "title": "三、技术实力与产品壁垒", "model": FAST_MODEL},
-    {"id": "four",  "title": "四、产业化落地实施计划", "model": FAST_MODEL},
-    {"id": "five",  "title": "五、商业模式与财务预测", "model": STRONG_MODEL},
-    {"id": "six",   "title": "六、产业带动与社会效益", "model": FAST_MODEL},
+    {"id": "four", "title": "四、产业化落地实施计划", "model": FAST_MODEL},
+    {"id": "five", "title": "五、商业模式与财务预测", "model": STRONG_MODEL},
+    {"id": "six", "title": "六、产业带动与社会效益", "model": FAST_MODEL},
     {"id": "seven", "title": "七、政策支持诉求与替代方案", "model": FAST_MODEL},
     {"id": "eight", "title": "八、风险分析与防控措施", "model": FAST_MODEL},
-    {"id": "nine",  "title": "九、投资结论与下一步行动计划", "model": STRONG_MODEL},
+    {"id": "nine", "title": "九、投资结论与下一步行动计划", "model": STRONG_MODEL},
 ]
 
 st.title("企业落地分析")
@@ -55,7 +55,7 @@ with st.form("bp_form"):
     project_name = st.text_input("项目名称*", placeholder="例：固态电池正极材料产业化项目")
     target_region = st.text_input("目标地区*", placeholder="例：济南高新区")
     industry = st.text_input("所属产业领域", placeholder="新能源 / 新材料")
-    
+   
     total_investment = st.number_input(
         "总投资额（万元）*",
         min_value=100.0,
@@ -63,45 +63,44 @@ with st.form("bp_form"):
         step=100.0,
         format="%.0f"
     )
-    
+   
     current_status = st.text_area("项目基本情况与核心亮点*", height=180)
-    
+   
+    # ================== 修改点1：改为可选 ==================
     additional_file = st.file_uploader(
-        "上传补充材料*",
+        "上传补充材料（可选）",
         type=["docx", "pdf", "txt"],
-        help="请上传项目计划书、技术资料等核心文件"
+        help="请上传项目计划书、技术资料等（不上传也可生成）"
     )
-    
+   
     submit = st.form_submit_button("开始生成")
 
 if submit:
-    required = [company_name.strip(), project_name.strip(), target_region.strip(), current_status.strip(), additional_file]
+    # ================== 修改点2：移除文件必填校验 ==================
+    required = [company_name.strip(), project_name.strip(), target_region.strip(), current_status.strip()]
     if not all(required) or total_investment is None:
         st.error("请填写所有带 * 的必填项")
         st.stop()
 
-    # 读取上传文件
+    # ================== 修改点3：文件读取改为可选 ==================
     extra_text = ""
-    try:
-        content_bytes = additional_file.read()
-        file_type = additional_file.type
-
-        if "officedocument.wordprocessingml" in file_type or file_type.endswith("docx"):
-            from docx import Document
-            doc = Document(BytesIO(content_bytes))
-            extra_text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
-        else:
-            try:
+    if additional_file is not None:
+        try:
+            content_bytes = additional_file.read()
+            file_type = additional_file.type
+            if "officedocument.wordprocessingml" in file_type or file_type.endswith("docx"):
+                from docx import Document
+                doc = Document(BytesIO(content_bytes))
+                extra_text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
+            else:
                 extra_text = content_bytes.decode("utf-8", errors="ignore")
-            except:
-                extra_text = "[文件内容无法解码，仅支持文本类文件]"
-
-        extra_text = extra_text[:2800]
-    except Exception as e:
-        st.warning(f"文件读取失败：{str(e)[:80]}... 将仅使用文本框内容")
+            extra_text = extra_text[:2800]
+        except Exception as e:
+            st.warning(f"文件读取失败：{str(e)[:80]}... 将仅使用文本框内容")
+    else:
+        extra_text = "（未上传补充材料，仅使用表单填写内容）"
 
     investment_str = f"{total_investment:,.0f}" if total_investment is not None else "未填写"
-
     highlights_and_extra = current_status.strip() + "\n\n补充材料（关键摘录）：\n" + extra_text
 
     user_base = USER_PROJECT_INFO_TEMPLATE.format(
@@ -113,15 +112,14 @@ if submit:
         highlights_and_extra=highlights_and_extra
     )
 
+    # ================== 以下生成逻辑完全不变 ==================
     full_result_parts = {}
     total_start = time.time()
-
     progress_bar = st.progress(0)
     status_text = st.empty()
 
     for idx, section in enumerate(SECTIONS):
         status_text.text(f"正在生成第 {idx+1} / {len(SECTIONS)} 部分（预计总耗时 60-120 秒）")
-        
         try:
             response = client.chat.completions.create(
                 model=section.get("model", FAST_MODEL),
@@ -137,32 +135,25 @@ if submit:
             full_result_parts[section["id"]] = content
         except Exception as e:
             full_result_parts[section["id"]] = f"【本节生成失败】{str(e)[:120]}"
-
         progress_bar.progress((idx + 1) / len(SECTIONS))
 
     total_time = time.time() - total_start
-
     status_text.empty()
     st.success(f"生成完成，总耗时 {total_time:.1f} 秒")
 
     st.markdown("### 生成结果")
-
     for section in SECTIONS:
         title = section["title"]
         content = full_result_parts.get(section["id"], "（无内容）")
-
         if section["id"] == "zero":
-            # 提取键值对 → 直接显示表格，不带任何额外标题
+            # 表格提取逻辑保持不变
             table_data = []
             lines = content.split("\n")
             current_key = ""
             current_value = ""
-
             for line in lines:
                 line = line.strip()
-                if not line:
-                    continue
-
+                if not line: continue
                 match = re.match(r"#{2,4}\s*(.+?)(?:\s*/.+?)?\s*$", line)
                 if match:
                     if current_key and current_value:
@@ -172,43 +163,33 @@ if submit:
                 else:
                     if current_key:
                         current_value += (" " if current_value else "") + line
-
             if current_key and current_value:
                 table_data.append((current_key, current_value.strip()))
-
             if table_data:
-                # 干净的两列表格，无序号
                 table_md = "| 字段名称 | 内容 |\n|----------|------|\n"
                 for key, value in table_data:
-                    # 清理多余换行与空格
                     clean_value = re.sub(r'\s+', ' ', value).strip()
                     table_md += f"| {key} | {clean_value} |\n"
                 st.markdown(table_md)
             else:
-                # 提取失败时显示原文
                 st.markdown(content)
-
         else:
             st.markdown(f"## {title}")
             st.markdown(content)
-
         st.markdown("---")
 
-    # 下载部分
+    # 下载部分保持不变
     full_md_content = ""
     for sec in SECTIONS:
         full_md_content += f"# {sec['title']}\n\n"
         full_md_content += full_result_parts.get(sec["id"], "") + "\n\n---\n\n"
-
     safe_filename = f"{project_name.replace(' ', '_')}_{target_region.replace(' ', '_') or '未知地区'}_{time.strftime('%Y%m%d')}"
-
     st.download_button(
         label="下载 Markdown 版",
         data=full_md_content,
         file_name=f"{safe_filename}_企业落地分析.md",
         mime="text/markdown"
     )
-
     st.download_button(
         label="下载纯文本版",
         data=full_md_content,

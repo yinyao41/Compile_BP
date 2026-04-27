@@ -21,10 +21,15 @@ STRONG_MODEL = "qwen-max"
 MAX_TOKENS_PER_CALL = 5500
 TEMPERATURE = 0.10
 
+# ====================== 修改点：添加免责声明 ======================
 SYSTEM_BASE = """你是一位资深政府产业基金投资决策顾问，擅长撰写符合政府招商逻辑的商业计划书结构化提纲。
 严格使用 Markdown 格式输出，不要添加多余说明。
 语气正式、专业，使用政府常用术语。
 所有关键数据使用 [占位符] 标记。
+
+重要免责要求：在输出的最开始位置，必须第一行明确写上以下内容：
+**重要提示：本方案/分析仅供参考，不构成任何正式的投资、招商、决策或法律建议。**
+
 现在根据以下项目信息生成内容。"""
 
 USER_PROJECT_INFO_TEMPLATE = """目标地区：{target}
@@ -55,7 +60,7 @@ with st.form("bp_form"):
     project_name = st.text_input("项目名称*", placeholder="例：固态电池正极材料产业化项目")
     target_region = st.text_input("目标地区*", placeholder="例：济南高新区")
     industry = st.text_input("所属产业领域", placeholder="新能源 / 新材料")
-   
+  
     total_investment = st.number_input(
         "总投资额（万元）*",
         min_value=100.0,
@@ -63,26 +68,23 @@ with st.form("bp_form"):
         step=100.0,
         format="%.0f"
     )
-   
+  
     current_status = st.text_area("项目基本情况与核心亮点*", height=180)
-   
-    # ================== 修改点1：改为可选 ==================
+  
     additional_file = st.file_uploader(
         "上传补充材料（可选）",
         type=["docx", "pdf", "txt"],
         help="请上传项目计划书、技术资料等（不上传也可生成）"
     )
-   
+  
     submit = st.form_submit_button("开始生成")
 
 if submit:
-    # ================== 修改点2：移除文件必填校验 ==================
     required = [company_name.strip(), project_name.strip(), target_region.strip(), current_status.strip()]
     if not all(required) or total_investment is None:
         st.error("请填写所有带 * 的必填项")
         st.stop()
 
-    # ================== 修改点3：文件读取改为可选 ==================
     extra_text = ""
     if additional_file is not None:
         try:
@@ -112,7 +114,7 @@ if submit:
         highlights_and_extra=highlights_and_extra
     )
 
-    # ================== 以下生成逻辑完全不变 ==================
+    # ================== 生成逻辑 ==================
     full_result_parts = {}
     total_start = time.time()
     progress_bar = st.progress(0)
@@ -139,7 +141,11 @@ if submit:
 
     total_time = time.time() - total_start
     status_text.empty()
+
     st.success(f"生成完成，总耗时 {total_time:.1f} 秒")
+    
+    # ================== 添加醒目免责提示 ==================
+    st.warning("**重要提示：本方案/分析仅供参考，不构成任何正式的投资、招商、决策或法律建议。**")
 
     st.markdown("### 生成结果")
     for section in SECTIONS:
@@ -183,7 +189,9 @@ if submit:
     for sec in SECTIONS:
         full_md_content += f"# {sec['title']}\n\n"
         full_md_content += full_result_parts.get(sec["id"], "") + "\n\n---\n\n"
+
     safe_filename = f"{project_name.replace(' ', '_')}_{target_region.replace(' ', '_') or '未知地区'}_{time.strftime('%Y%m%d')}"
+
     st.download_button(
         label="下载 Markdown 版",
         data=full_md_content,

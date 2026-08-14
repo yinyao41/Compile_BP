@@ -315,12 +315,6 @@ if submit:
     safe_filename = f"{project_name.replace(' ', '_')}_{target_region.replace(' ', '_') or '未知地区'}_{time.strftime('%Y%m%d')}"
 
     st.download_button(
-        label="下载 Markdown 版",
-        data=full_md_content,
-        file_name=f"{safe_filename}_企业落地分析.md",
-        mime="text/markdown"
-    )
-    st.download_button(
         label="下载纯文本版",
         data=full_md_content,
         file_name=f"{safe_filename}_纯文本.txt",
